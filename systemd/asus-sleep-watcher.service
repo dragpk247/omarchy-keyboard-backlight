@@ -1,0 +1,12 @@
+[Unit]
+Description=ASUS Sleep & Resume Watcher (Instant Keyboard Backlight and Power Sync)
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/jpi/.local/bin/asus-sleep-watcher
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

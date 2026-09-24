@@ -1,0 +1,38 @@
+#!/bin/bash
+# asus-sleep-watcher: Sleep & Resume Event Watcher + Schedule Transition Watcher
+# Automatically applies user's custom schedule without needing fixed systemd timers.
+
+sync_state() {
+    sleep 0.5
+    /home/jpi/.local/bin/asus-kbd-sync auto >/dev/null 2>&1
+    /home/jpi/.local/bin/asus-power-sync >/dev/null 2>&1
+}
+
+# Initial synchronization on startup/login
+sync_state
+
+# Background worker to handle hour transitions for the user's custom schedule
+(
+    last_hour=""
+    while true; do
+        current_hour=$(date +%-H)
+        if [ "$current_hour" != "$last_hour" ]; then
+            if [ -n "$last_hour" ]; then
+                # An hour boundary was crossed while awake
+                /home/jpi/.local/bin/asus-kbd-sync auto >/dev/null 2>&1
+            fi
+            last_hour="$current_hour"
+        fi
+        sleep 30
+    done
+) &
+WORKER_PID=$!
+
+trap 'kill "$WORKER_PID" 2>/dev/null; exit 0' SIGTERM SIGINT
+
+# Monitor systemd logind signals on the system D-Bus for wake from sleep
+gdbus monitor --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1 | while read -r line; do
+    if [[ "$line" =~ PrepareForSleep\ \(false ]]; then
+        sync_state
+    fi
+done

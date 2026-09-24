@@ -1,0 +1,74 @@
+#!/bin/bash
+# asus-kbd-menu: Interactive menu for ASUS Keyboard Backlight & Schedule Configuration
+
+CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
+
+ENABLED=$(jq -r 'if has("enabled") then .enabled else true end' "$CONFIG_FILE" 2>/dev/null || echo true)
+OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 9 end' "$CONFIG_FILE" 2>/dev/null || echo 9)
+ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 18 end' "$CONFIG_FILE" 2>/dev/null || echo 18)
+BRIGHTNESS=$(jq -r '.brightness // "med"' "$CONFIG_FILE" 2>/dev/null || echo med)
+
+cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
+if [ "$cur" -gt 0 ]; then
+    CURRENT_STATE="ON"
+    TOGGLE_LABEL="💡 Toggle Backlight: Turn OFF (Currently ON)"
+else
+    CURRENT_STATE="OFF"
+    TOGGLE_LABEL="💡 Toggle Backlight: Turn ON (Currently OFF)"
+fi
+
+if [ "$ENABLED" = "true" ]; then
+    SCHED_STATE="ENABLED (Off at $(printf '%02d:00' "$OFF_HOUR"), On at $(printf '%02d:00' "$ON_HOUR"))"
+else
+    SCHED_STATE="DISABLED (Manual control only)"
+fi
+
+CHOICE=$(omarchy-menu-select "Keyboard Backlight Settings" \
+  "$TOGGLE_LABEL" \
+  "⏰ Auto Schedule: $SCHED_STATE" \
+  "☀️ Set Daytime Turn-OFF Hour (Currently: $(printf '%02d:00' "$OFF_HOUR"))" \
+  "🌙 Set Nighttime Turn-ON Hour (Currently: $(printf '%02d:00' "$ON_HOUR"))" \
+  "🔆 Set Night Brightness Level (Currently: $BRIGHTNESS)" \
+)
+
+case "$CHOICE" in
+  *"Toggle Backlight"*)
+    /home/jpi/.local/bin/asus-kbd-sync toggle
+    new_cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
+    if [ "$new_cur" -gt 0 ]; then
+        notify-send -i keyboard "Keyboard Backlight" "Turned ON"
+    else
+        notify-send -i keyboard "Keyboard Backlight" "Turned OFF"
+    fi
+    ;;
+  *"Auto Schedule:"*)
+    if [ "$ENABLED" = "true" ]; then
+        /home/jpi/.local/bin/asus-kbd-sync disable
+        notify-send -i keyboard "Keyboard Backlight" "Automated schedule DISABLED"
+    else
+        /home/jpi/.local/bin/asus-kbd-sync enable
+        notify-send -i keyboard "Keyboard Backlight" "Automated schedule ENABLED"
+    fi
+    ;;
+  *"Set Daytime Turn-OFF Hour"*)
+    VAL=$(omarchy-menu-input "Enter Turn-OFF hour (0-23, e.g. 9 for 9:00 AM):")
+    if [[ -n "$VAL" && "$VAL" =~ ^[0-9]+$ && "$VAL" -ge 0 && "$VAL" -le 23 ]]; then
+        /home/jpi/.local/bin/asus-kbd-sync set-off "$VAL"
+        notify-send -i keyboard "Keyboard Backlight" "Scheduled Turn-OFF set to $(printf '%02d:00' "$VAL")"
+    fi
+    ;;
+  *"Set Nighttime Turn-ON Hour"*)
+    VAL=$(omarchy-menu-input "Enter Turn-ON hour (0-23, e.g. 18 for 6:00 PM):")
+    if [[ -n "$VAL" && "$VAL" =~ ^[0-9]+$ && "$VAL" -ge 0 && "$VAL" -le 23 ]]; then
+        /home/jpi/.local/bin/asus-kbd-sync set-on "$VAL"
+        notify-send -i keyboard "Keyboard Backlight" "Scheduled Turn-ON set to $(printf '%02d:00' "$VAL")"
+    fi
+    ;;
+  *"Set Night Brightness Level"*)
+    LVL=$(omarchy-menu-select "Select Brightness Level" "low" "med" "high")
+    if [[ "$LVL" == "low" || "$LVL" == "med" || "$LVL" == "high" ]]; then
+        /home/jpi/.local/bin/asus-kbd-sync set-brightness "$LVL"
+        notify-send -i keyboard "Keyboard Backlight" "Brightness set to $LVL"
+    fi
+    ;;
+esac

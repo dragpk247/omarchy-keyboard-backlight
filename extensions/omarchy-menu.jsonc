@@ -1,0 +1,45 @@
+{
+  // Extend the Quickshell Omarchy menu with JSONC.
+  //
+  // IDs are object keys. The parent is inferred from the dotted id, so
+  // "personal.notes" appears under "personal", and "personal" appears on the
+  // root menu. Reuse an existing id to override/extend it.
+
+  // AI Agents launcher & session manager
+  "trigger.agents": {
+    "icon": "󰚩",
+    "label": "AI Agents",
+    "description": "Launch, toggle, and view usage for Antigravity, Claude, Codex, Ollama",
+    "aliases": ["agent", "agents", "agy", "claude", "codex", "ollama", "ai"],
+    "action": "asus-agent-menu"
+  },
+
+  // Keyboard Backlight toggle under Trigger -> Toggle
+  "trigger.toggle.keyboard-backlight": {
+    "icon": "",
+    "label": "Keyboard Backlight",
+    "description": "Toggle ASUS ROG Flow 13 keyboard backlight",
+    "aliases": ["keyboard", "kbd", "backlight"],
+    "checked": "[[ $(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0) -gt 0 ]]",
+    "action": "asus-kbd-sync toggle"
+  },
+
+  // Keyboard Backlight Schedule under Setup / Settings
+  "setup.keyboard-backlight": {
+    "icon": "",
+    "label": "Keyboard Backlight Schedule",
+    "description": "Configure auto turn-off/on schedule and brightness preset",
+    "aliases": ["kbd-schedule", "keyboard-schedule"],
+    "action": "asus-kbd-menu"
+  },
+
+  // Also under Trigger -> Hardware
+  "trigger.hardware.keyboard-backlight": {
+    "icon": "",
+    "label": "Keyboard Backlight",
+    "description": "Toggle ASUS ROG Flow 13 keyboard backlight",
+    "aliases": ["keyboard-light", "kbd-light"],
+    "checked": "[[ $(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0) -gt 0 ]]",
+    "action": "asus-kbd-sync toggle"
+  }
+}

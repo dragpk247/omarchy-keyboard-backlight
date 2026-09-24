@@ -1,0 +1,158 @@
+#!/bin/bash
+# Sync ASUS ROG Flow 13 keyboard backlight with dynamic user-configured schedule.
+
+CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
+
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        ENABLED=$(jq -r 'if has("enabled") then .enabled else true end' "$CONFIG_FILE" 2>/dev/null)
+        OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 9 end' "$CONFIG_FILE" 2>/dev/null)
+        ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 18 end' "$CONFIG_FILE" 2>/dev/null)
+        BRIGHTNESS=$(jq -r '.brightness // "med"' "$CONFIG_FILE" 2>/dev/null)
+    else
+        ENABLED=true
+        OFF_HOUR=9
+        ON_HOUR=18
+        BRIGHTNESS="med"
+    fi
+}
+
+save_config() {
+    mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null
+    jq -n \
+      --argjson enabled "$ENABLED" \
+      --argjson off_hour "$OFF_HOUR" \
+      --argjson on_hour "$ON_HOUR" \
+      --arg brightness "$BRIGHTNESS" \
+      '{enabled: $enabled, off_hour: $off_hour, on_hour: $on_hour, brightness: $brightness}' > "$CONFIG_FILE"
+}
+
+set_brightness() {
+    local target="$1"
+    load_config
+    local level_num=2
+    case "$BRIGHTNESS" in
+        low) level_num=1 ;;
+        med) level_num=2 ;;
+        high) level_num=3 ;;
+    esac
+
+    if [ "$target" = "off" ]; then
+        command -v asusctl >/dev/null 2>&1 && asusctl leds set off >/dev/null 2>&1
+        command -v brightnessctl >/dev/null 2>&1 && brightnessctl --device='asus::kbd_backlight' set 0 >/dev/null 2>&1
+    else
+        command -v asusctl >/dev/null 2>&1 && asusctl leds set "$BRIGHTNESS" >/dev/null 2>&1
+        command -v brightnessctl >/dev/null 2>&1 && brightnessctl --device='asus::kbd_backlight' set "$level_num" >/dev/null 2>&1
+    fi
+}
+
+load_config
+ACTION="${1:-auto}"
+
+case "$ACTION" in
+    off)
+        set_brightness off
+        ;;
+    on)
+        set_brightness on
+        ;;
+    toggle)
+        cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
+        if [ "$cur" -gt 0 ]; then
+            set_brightness off
+            echo "Keyboard backlight turned OFF"
+        else
+            set_brightness on
+            echo "Keyboard backlight turned ON ($BRIGHTNESS)"
+        fi
+        ;;
+    auto)
+        if [ "$ENABLED" != "true" ]; then
+            # Schedule is disabled; do not enforce changes
+            exit 0
+        fi
+        HOUR=$(date +%-H)
+        target="on"
+        if [ "$OFF_HOUR" -lt "$ON_HOUR" ]; then
+            if [ "$HOUR" -ge "$OFF_HOUR" ] && [ "$HOUR" -lt "$ON_HOUR" ]; then
+                target="off"
+            fi
+        else
+            if [ "$HOUR" -ge "$OFF_HOUR" ] || [ "$HOUR" -lt "$ON_HOUR" ]; then
+                target="off"
+            fi
+        fi
+        set_brightness "$target"
+        ;;
+    status)
+        echo "Current time: $(date '+%H:%M:%S')"
+        echo "Schedule Enabled: $ENABLED"
+        if [ "$ENABLED" = "true" ]; then
+            echo "Scheduled Turn-OFF: $(printf '%02d:00' "$OFF_HOUR")"
+            echo "Scheduled Turn-ON:  $(printf '%02d:00' "$ON_HOUR") (Brightness: $BRIGHTNESS)"
+        else
+            echo "Automated schedule is DISABLED (Manual control only)"
+        fi
+        if command -v asusctl >/dev/null 2>&1; then
+            echo "asusctl status: $(asusctl leds get 2>/dev/null)"
+        fi
+        if command -v brightnessctl >/dev/null 2>&1; then
+            echo "Hardware brightness: $(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null)/$(brightnessctl --device='asus::kbd_backlight' max 2>/dev/null)"
+        fi
+        ;;
+    enable)
+        ENABLED=true
+        save_config
+        echo "Keyboard schedule ENABLED"
+        $0 auto
+        ;;
+    disable)
+        ENABLED=false
+        save_config
+        echo "Keyboard schedule DISABLED"
+        ;;
+    set-off)
+        if [[ -n "$2" && "$2" =~ ^[0-9]+$ && "$2" -ge 0 && "$2" -le 23 ]]; then
+            OFF_HOUR=$2
+            save_config
+            echo "Turn-off hour set to: $(printf '%02d:00' "$OFF_HOUR")"
+            $0 auto
+        else
+            echo "Usage: $0 set-off <0-23>"
+            exit 1
+        fi
+        ;;
+    set-on)
+        if [[ -n "$2" && "$2" =~ ^[0-9]+$ && "$2" -ge 0 && "$2" -le 23 ]]; then
+            ON_HOUR=$2
+            save_config
+            echo "Turn-on hour set to: $(printf '%02d:00' "$ON_HOUR")"
+            $0 auto
+        else
+            echo "Usage: $0 set-on <0-23>"
+            exit 1
+        fi
+        ;;
+    set-brightness)
+        case "$2" in
+            low|med|high)
+                BRIGHTNESS="$2"
+                save_config
+                echo "Brightness preset set to: $BRIGHTNESS"
+                # If currently on, update brightness now
+                cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
+                if [ "$cur" -gt 0 ]; then
+                    set_brightness on
+                fi
+                ;;
+            *)
+                echo "Usage: $0 set-brightness <low|med|high>"
+                exit 1
+                ;;
+        esac
+        ;;
+    *)
+        echo "Usage: $0 [auto|on|off|toggle|status|enable|disable|set-off <hour>|set-on <hour>|set-brightness <low|med|high>]"
+        exit 1
+        ;;
+esac
