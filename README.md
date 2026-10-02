@@ -57,7 +57,7 @@ The installer will:
 
 ## 🛠️ CLI Usage
 
-You can also control everything directly from your terminal:
+You can control everything directly from your terminal:
 
 ```bash
 # Check current schedule and hardware status
@@ -70,16 +70,51 @@ asus-kbd-sync toggle
 asus-kbd-sync on
 asus-kbd-sync off
 
-# Configure schedule hours
-asus-kbd-sync set-off 9    # Turn off at 9:00 AM
-asus-kbd-sync set-on 18    # Turn on at 6:00 PM
-
-# Enable or disable automated schedule
-asus-kbd-sync enable
-asus-kbd-sync disable
-
 # Open the interactive GUI menu
 asus-kbd-menu
+```
+
+---
+
+## ⏰ Enabling Automated Day/Night Scheduling (Optional)
+
+By default, the keyboard backlight is set to **100% manual control**, meaning it will only turn on or off when you press your hotkeys or click the widget.
+
+If you prefer your keyboard backlight to automatically turn off during the day (to save battery) and turn on at night, you can easily enable the automated schedule:
+
+### Option 1: Via the GUI Menu (Recommended)
+1. Left-click the **``** keyboard icon on your Omarchy top bar (or run `asus-kbd-menu`).
+2. Click **`⏰ Auto Schedule: DISABLED`** to toggle it to **ENABLED**.
+3. Use the menu items to set your preferred turn-off and turn-on hours (e.g., Off at 09:00, On at 18:00) and brightness level (`low`, `med`, or `high`).
+
+### Option 2: Via Terminal Commands
+```bash
+# 1. Enable automated scheduling
+asus-kbd-sync enable
+
+# 2. Configure daytime turn-off hour (0-23, e.g. 9:00 AM)
+asus-kbd-sync set-off 9
+
+# 3. Configure evening turn-on hour (0-23, e.g. 6:00 PM)
+asus-kbd-sync set-on 18
+
+# 4. Set evening brightness preset (low, med, or high)
+asus-kbd-sync set-brightness med
+
+# 5. Check status
+asus-kbd-sync status
+```
+
+### Automatic Hourly Sync (Optional)
+The included `asus-sleep-watcher` service automatically enforces the schedule whenever your laptop wakes from sleep or you open the lid. If you also want the schedule to automatically enforce on boot or hourly, you can enable the systemd service:
+
+```bash
+systemctl --user enable --now asus-kbd-sync.service
+```
+
+### To Switch Back to Manual Control Anytime:
+```bash
+asus-kbd-sync disable
 ```
 
 ---

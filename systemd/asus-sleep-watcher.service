@@ -4,7 +4,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/home/jpi/.local/bin/asus-sleep-watcher
+ExecStart=%h/.local/bin/asus-sleep-watcher
 Restart=always
 RestartSec=3
 

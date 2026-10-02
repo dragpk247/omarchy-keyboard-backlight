@@ -15,10 +15,10 @@ PLUGIN_DIR="$HOME/.config/omarchy/plugins/user.kbd-backlight"
 mkdir -p "$PLUGIN_DIR"
 cp -r "$REPO_DIR/plugin/"* "$PLUGIN_DIR/"
 
-# 3. Install Systemd Service
+# 3. Install Systemd Services
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
-cp "$REPO_DIR/systemd/asus-sleep-watcher.service" "$SYSTEMD_DIR/"
+cp "$REPO_DIR/systemd/"*.service "$SYSTEMD_DIR/"
 
 # 4. Initialize Settings
 SETTINGS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings"

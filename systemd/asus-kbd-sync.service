@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync ASUS ROG Flow 13 keyboard backlight
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/asus-kbd-sync auto
+
+[Install]
+WantedBy=default.target
