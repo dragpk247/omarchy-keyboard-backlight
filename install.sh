@@ -26,7 +26,7 @@ mkdir -p "$SETTINGS_DIR"
 if [ ! -f "$SETTINGS_DIR/kbd-schedule.json" ]; then
     cat << 'EOF' > "$SETTINGS_DIR/kbd-schedule.json"
 {
-  "enabled": true,
+  "enabled": false,
   "off_hour": 9,
   "on_hour": 18,
   "brightness": "med"

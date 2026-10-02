@@ -5,12 +5,12 @@ CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
-        ENABLED=$(jq -r 'if has("enabled") then .enabled else true end' "$CONFIG_FILE" 2>/dev/null)
+        ENABLED=$(jq -r 'if has("enabled") then .enabled else false end' "$CONFIG_FILE" 2>/dev/null)
         OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 9 end' "$CONFIG_FILE" 2>/dev/null)
         ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 18 end' "$CONFIG_FILE" 2>/dev/null)
         BRIGHTNESS=$(jq -r '.brightness // "med"' "$CONFIG_FILE" 2>/dev/null)
     else
-        ENABLED=true
+        ENABLED=false
         OFF_HOUR=9
         ON_HOUR=18
         BRIGHTNESS="med"

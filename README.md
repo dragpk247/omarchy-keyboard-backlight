@@ -94,7 +94,7 @@ Configuration is saved in JSON format at:
 Example:
 ```json
 {
-  "enabled": true,
+  "enabled": false,
   "off_hour": 9,
   "on_hour": 18,
   "brightness": "med"
