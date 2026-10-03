@@ -36,10 +36,34 @@ else
     ALS_STATE="DISABLED"
 fi
 
+get_current_season() {
+    local m
+    m=$(date +%-m)
+    case "$m" in
+        12|1|2)  echo "winter" ;;
+        3|4|5)   echo "spring" ;;
+        6|7|8)   echo "summer" ;;
+        9|10|11) echo "fall" ;;
+    esac
+}
+
+get_season_display() {
+    local s="$1"
+    case "$s" in
+        winter) echo "❄️ Winter" ;;
+        spring) echo "🌸 Spring" ;;
+        summer) echo "☀️ Summer" ;;
+        fall)   echo "🍂 Fall" ;;
+        fall,winter|winter,fall|dark-months) echo "🍂❄️ Fall & Winter" ;;
+        all|any) echo "🌐 All Seasons" ;;
+        *)      echo "$s" ;;
+    esac
+}
+
 CHOICE=$(omarchy-menu-select "Keyboard Backlight Settings" \
   "$TOGGLE_LABEL" \
   "⏰ Auto Schedule: $SCHED_STATE" \
-  "🍂 Season Filter: $SEASON (Fall = Sep 1 - Nov 30)" \
+  "🗓️ Season Filter: $(get_season_display "$SEASON") [Live: $(get_season_display "$(get_current_season)")]" \
   "🔆 Brightness Level (Currently: $BRIGHTNESS)" \
   "💡 ALS Ambient Sensor Trigger: $ALS_STATE" \
   "⚙️ Set ALS Lux Threshold (Currently: $ALS_THRESHOLD)" \
@@ -68,13 +92,39 @@ case "$CHOICE" in
     fi
     ;;
   *"Season Filter:"*)
-    if [ "$SEASON" = "fall" ]; then
+    NEW_SEASON=$(omarchy-menu-select "Select Season Filter" \
+      "🌐 All Seasons (Active year-round)" \
+      "🍂❄️ Fall & Winter (Sep 1 – Feb 28 / Dark & cold months)" \
+      "❄️ Winter only (Dec 1 – Feb 28)" \
+      "🍂 Fall only (Sep 1 – Nov 30)" \
+      "🌸 Spring only (Mar 1 – May 31)" \
+      "☀️ Summer only (Jun 1 – Aug 31)")
+    case "$NEW_SEASON" in
+      *"All Seasons"*)
         "$SYNC_CMD" set-season all
-        notify-send -i keyboard "Keyboard Backlight" "Season filter set to ALL YEAR"
-    else
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: ALL SEASONS"
+        ;;
+      *"Fall & Winter"*)
+        "$SYNC_CMD" set-season fall,winter
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: FALL & WINTER"
+        ;;
+      *"Winter only"*)
+        "$SYNC_CMD" set-season winter
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: WINTER ONLY (Dec 1 – Feb 28)"
+        ;;
+      *"Fall only"*)
         "$SYNC_CMD" set-season fall
-        notify-send -i keyboard "Keyboard Backlight" "Season filter set to FALL ONLY (Sep 1 - Nov 30)"
-    fi
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: FALL ONLY (Sep 1 – Nov 30)"
+        ;;
+      *"Spring only"*)
+        "$SYNC_CMD" set-season spring
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: SPRING ONLY (Mar 1 – May 31)"
+        ;;
+      *"Summer only"*)
+        "$SYNC_CMD" set-season summer
+        notify-send -i keyboard "Keyboard Backlight" "Season filter: SUMMER ONLY (Jun 1 – Aug 31)"
+        ;;
+    esac
     ;;
   *"Brightness Level"*)
     LVL=$(omarchy-menu-select "Select Brightness Level" "low" "med" "high")

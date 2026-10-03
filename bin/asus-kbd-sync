@@ -3,11 +3,46 @@
 
 CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
 
-is_fall_season() {
+get_current_season() {
     local m
     m=$(date +%-m)
-    # Meteorological Fall: September 1 through November 30
-    if [ "$m" -ge 9 ] && [ "$m" -le 11 ]; then return 0; fi
+    case "$m" in
+        12|1|2)  echo "winter" ;;
+        3|4|5)   echo "spring" ;;
+        6|7|8)   echo "summer" ;;
+        9|10|11) echo "fall" ;;
+    esac
+}
+
+get_season_display() {
+    local s="$1"
+    case "$s" in
+        winter) echo "❄️ Winter (Dec 1 – Feb 28)" ;;
+        spring) echo "🌸 Spring (Mar 1 – May 31)" ;;
+        summer) echo "☀️ Summer (Jun 1 – Aug 31)" ;;
+        fall)   echo "🍂 Fall / Autumn (Sep 1 – Nov 30)" ;;
+        fall,winter|winter,fall|dark-months) echo "🍂❄️ Fall & Winter (Sep 1 – Feb 28)" ;;
+        all|any) echo "🌐 All Seasons (Year-round)" ;;
+        *)      echo "$s" ;;
+    esac
+}
+
+is_season_active() {
+    local cur
+    cur=$(get_current_season)
+    case "$SEASON" in
+        all|""|"any")
+            return 0
+            ;;
+        fall,winter|winter,fall|dark-months)
+            [[ "$cur" == "fall" || "$cur" == "winter" ]] && return 0
+            ;;
+        *)
+            if echo "$SEASON" | tr ',' '\n' | grep -qi "^$cur$"; then
+                return 0
+            fi
+            ;;
+    esac
     return 1
 }
 
@@ -114,8 +149,8 @@ case "$ACTION" in
         fi
 
         # Season check
-        if [ "$SEASON" = "fall" ] && ! is_fall_season; then
-            # Outside Fall season; do not turn on via Fall schedule
+        if ! is_season_active; then
+            # Current date is outside configured season filter
             set_brightness off
             exit 0
         fi
@@ -156,16 +191,17 @@ case "$ACTION" in
         set_brightness "$target"
         ;;
     status)
+        cur_season=$(get_current_season)
         echo "=== ASUS Keyboard Backlight Status ==="
         echo "Current Time:   $(date '+%Y-%m-%d %H:%M:%S')"
-        if is_fall_season; then
-            echo "Current Season: Fall / Autumn (ACTIVE: Sep 1 - Nov 30)"
+        echo "Current Season: $(get_season_display "$cur_season")"
+        if is_season_active; then
+            echo "Season Filter:  $(get_season_display "$SEASON") [STATUS: ACTIVE]"
         else
-            echo "Current Season: Outside Fall"
+            echo "Season Filter:  $(get_season_display "$SEASON") [STATUS: INACTIVE - Outside Filter]"
         fi
         echo "Schedule State: $([ "$ENABLED" = "true" ] && echo "ENABLED" || echo "DISABLED")"
-        echo "Season Filter:  $SEASON"
-        echo "Active Window:  $(printf '%02d:00' "$ON_HOUR") (8:00 PM) to $(printf '%02d:00' "$OFF_HOUR") (6:00 AM)"
+        echo "Active Window:  $(printf '%02d:00' "$ON_HOUR") to $(printf '%02d:00' "$OFF_HOUR")"
         echo "Backlight Level:$BRIGHTNESS"
         
         echo ""
@@ -222,14 +258,14 @@ case "$ACTION" in
         ;;
     set-season)
         case "$2" in
-            fall|all)
+            all|fall|winter|spring|summer|fall,winter|winter,fall|dark-months)
                 SEASON="$2"
                 save_config
-                echo "Season filter set to: $SEASON"
+                echo "Season filter set to: $(get_season_display "$SEASON")"
                 $0 auto
                 ;;
             *)
-                echo "Usage: $0 set-season <fall|all>"
+                echo "Usage: $0 set-season <all|fall|winter|spring|summer|fall,winter>"
                 exit 1
                 ;;
         esac
@@ -283,7 +319,7 @@ case "$ACTION" in
         esac
         ;;
     *)
-        echo "Usage: $0 [auto|on|off|toggle|status|enable|disable|set-off <hour>|set-on <hour>|set-season <fall|all>|set-brightness <low|med|high>|set-als <enable|disable|threshold <val>>]"
+        echo "Usage: $0 [auto|on|off|toggle|status|enable|disable|set-off <hour>|set-on <hour>|set-season <all|fall|winter|spring|summer|fall,winter>|set-brightness <low|med|high>|set-als <enable|disable|threshold <val>>]"
         exit 1
         ;;
 esac

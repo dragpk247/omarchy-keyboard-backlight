@@ -14,7 +14,7 @@ Optimized for **ASUS ROG** laptops (Flow 13, Zephyrus, Strix) using `asusctl` as
   - **Customizable Turn-OFF & ON Hours**: Set daytime turn-off time (e.g. `06:00`) and evening turn-on time (e.g. `20:00`).
   - **Enable / Disable Automation**: Toggle automated scheduling on or off with a single click.
   - **Brightness Presets**: Choose between `low` (33%), `med` (66%), or `high` (100%).
-  - **Season-Aware Filter**: Limit automated lighting to Fall/Autumn (`Sep 1 – Nov 30`) or run all year round.
+  - **4-Season Intelligent Filter**: Automatically calculates active meteorological seasons (Winter: Dec 1 – Feb 28, Spring: Mar 1 – May 31, Summer: Jun 1 – Aug 31, Fall: Sep 1 – Nov 30) or year-round / custom combinations (`fall,winter`).
   - **Ambient Light Sensor (ALS)**: Dynamically trigger backlight only when environment drops below configured lux threshold (hardware sensor via Linux IIO sysfs).
   - **Diagnostic Status Viewer**: Instant report of ALS readings, active season, brightness levels, and sysfs states.
 - **Omarchy OSD Integration**: Pops up smooth on-screen display badges (`omarchy-osd`) and desktop notifications on toggle.
@@ -104,9 +104,10 @@ asus-kbd-sync set-on 18
 # 4. Set evening brightness preset (low, med, or high)
 asus-kbd-sync set-brightness med
 
-# 5. Set season filter (fall only or all year)
-asus-kbd-sync set-season fall
+# 5. Set season filter (all, fall, winter, spring, summer, or fall,winter)
 asus-kbd-sync set-season all
+asus-kbd-sync set-season fall,winter
+asus-kbd-sync set-season winter
 
 # 6. Configure Ambient Light Sensor (ALS) triggering
 asus-kbd-sync set-als enable
