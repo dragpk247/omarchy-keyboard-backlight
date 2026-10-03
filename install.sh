@@ -29,7 +29,10 @@ if [ ! -f "$SETTINGS_DIR/kbd-schedule.json" ]; then
   "enabled": false,
   "off_hour": 9,
   "on_hour": 18,
-  "brightness": "med"
+  "brightness": "med",
+  "season": "fall",
+  "als_enabled": false,
+  "als_threshold": 30
 }
 EOF
 fi

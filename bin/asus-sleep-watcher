@@ -2,10 +2,22 @@
 # asus-sleep-watcher: Sleep & Resume Event Watcher + Schedule Transition Watcher
 # Automatically applies user's custom schedule without needing fixed systemd timers.
 
+BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
+CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
+
 sync_state() {
     sleep 0.5
-    /home/jpi/.local/bin/asus-kbd-sync auto >/dev/null 2>&1
-    /home/jpi/.local/bin/asus-power-sync >/dev/null 2>&1
+    if [ -x "$BIN_DIR/asus-kbd-sync" ]; then
+        "$BIN_DIR/asus-kbd-sync" auto >/dev/null 2>&1
+    elif command -v asus-kbd-sync >/dev/null 2>&1; then
+        asus-kbd-sync auto >/dev/null 2>&1
+    fi
+
+    if [ -x "$BIN_DIR/asus-power-sync" ]; then
+        "$BIN_DIR/asus-power-sync" >/dev/null 2>&1
+    elif command -v asus-power-sync >/dev/null 2>&1; then
+        asus-power-sync >/dev/null 2>&1
+    fi
 }
 
 # Initial synchronization on startup/login
@@ -19,9 +31,25 @@ sync_state
         if [ "$current_hour" != "$last_hour" ]; then
             if [ -n "$last_hour" ]; then
                 # An hour boundary was crossed while awake
-                /home/jpi/.local/bin/asus-kbd-sync auto >/dev/null 2>&1
+                if [ -x "$BIN_DIR/asus-kbd-sync" ]; then
+                    "$BIN_DIR/asus-kbd-sync" auto >/dev/null 2>&1
+                elif command -v asus-kbd-sync >/dev/null 2>&1; then
+                    asus-kbd-sync auto >/dev/null 2>&1
+                fi
             fi
             last_hour="$current_hour"
+        else
+            # Also sync if ALS is active
+            if [ -f "$CONFIG_FILE" ]; then
+                als_on=$(jq -r '.als_enabled // false' "$CONFIG_FILE" 2>/dev/null)
+                if [ "$als_on" = "true" ]; then
+                    if [ -x "$BIN_DIR/asus-kbd-sync" ]; then
+                        "$BIN_DIR/asus-kbd-sync" auto >/dev/null 2>&1
+                    elif command -v asus-kbd-sync >/dev/null 2>&1; then
+                        asus-kbd-sync auto >/dev/null 2>&1
+                    fi
+                fi
+            fi
         fi
         sleep 30
     done

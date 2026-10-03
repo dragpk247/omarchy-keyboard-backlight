@@ -2,11 +2,18 @@
 # asus-kbd-menu: Interactive menu for ASUS Keyboard Backlight & Schedule Configuration
 
 CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
+SYNC_CMD="${XDG_BIN_HOME:-$HOME/.local/bin}/asus-kbd-sync"
+if [ ! -x "$SYNC_CMD" ]; then
+    SYNC_CMD="asus-kbd-sync"
+fi
 
 ENABLED=$(jq -r 'if has("enabled") then .enabled else true end' "$CONFIG_FILE" 2>/dev/null || echo true)
-OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 9 end' "$CONFIG_FILE" 2>/dev/null || echo 9)
-ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 18 end' "$CONFIG_FILE" 2>/dev/null || echo 18)
-BRIGHTNESS=$(jq -r '.brightness // "med"' "$CONFIG_FILE" 2>/dev/null || echo med)
+OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 6 end' "$CONFIG_FILE" 2>/dev/null || echo 6)
+ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 20 end' "$CONFIG_FILE" 2>/dev/null || echo 20)
+BRIGHTNESS=$(jq -r '.brightness // "low"' "$CONFIG_FILE" 2>/dev/null || echo low)
+SEASON=$(jq -r '.season // "fall"' "$CONFIG_FILE" 2>/dev/null || echo fall)
+ALS_ENABLED=$(jq -r 'if has("als_enabled") then .als_enabled else false end' "$CONFIG_FILE" 2>/dev/null || echo false)
+ALS_THRESHOLD=$(jq -r '.als_threshold // 30' "$CONFIG_FILE" 2>/dev/null || echo 30)
 
 cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
 if [ "$cur" -gt 0 ]; then
@@ -23,17 +30,27 @@ else
     SCHED_STATE="DISABLED (Manual control only)"
 fi
 
+if [ "$ALS_ENABLED" = "true" ]; then
+    ALS_STATE="ENABLED (Threshold: ${ALS_THRESHOLD} lux)"
+else
+    ALS_STATE="DISABLED"
+fi
+
 CHOICE=$(omarchy-menu-select "Keyboard Backlight Settings" \
   "$TOGGLE_LABEL" \
   "⏰ Auto Schedule: $SCHED_STATE" \
-  "☀️ Set Daytime Turn-OFF Hour (Currently: $(printf '%02d:00' "$OFF_HOUR"))" \
+  "🍂 Season Filter: $SEASON (Fall = Sep 1 - Nov 30)" \
+  "🔆 Brightness Level (Currently: $BRIGHTNESS)" \
+  "💡 ALS Ambient Sensor Trigger: $ALS_STATE" \
+  "⚙️ Set ALS Lux Threshold (Currently: $ALS_THRESHOLD)" \
   "🌙 Set Nighttime Turn-ON Hour (Currently: $(printf '%02d:00' "$ON_HOUR"))" \
-  "🔆 Set Night Brightness Level (Currently: $BRIGHTNESS)" \
+  "☀️ Set Daytime Turn-OFF Hour (Currently: $(printf '%02d:00' "$OFF_HOUR"))" \
+  "📊 View Backlight & Sensor Status" \
 )
 
 case "$CHOICE" in
   *"Toggle Backlight"*)
-    /home/jpi/.local/bin/asus-kbd-sync toggle
+    "$SYNC_CMD" toggle
     new_cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
     if [ "$new_cur" -gt 0 ]; then
         notify-send -i keyboard "Keyboard Backlight" "Turned ON"
@@ -43,32 +60,61 @@ case "$CHOICE" in
     ;;
   *"Auto Schedule:"*)
     if [ "$ENABLED" = "true" ]; then
-        /home/jpi/.local/bin/asus-kbd-sync disable
+        "$SYNC_CMD" disable
         notify-send -i keyboard "Keyboard Backlight" "Automated schedule DISABLED"
     else
-        /home/jpi/.local/bin/asus-kbd-sync enable
+        "$SYNC_CMD" enable
         notify-send -i keyboard "Keyboard Backlight" "Automated schedule ENABLED"
     fi
     ;;
+  *"Season Filter:"*)
+    if [ "$SEASON" = "fall" ]; then
+        "$SYNC_CMD" set-season all
+        notify-send -i keyboard "Keyboard Backlight" "Season filter set to ALL YEAR"
+    else
+        "$SYNC_CMD" set-season fall
+        notify-send -i keyboard "Keyboard Backlight" "Season filter set to FALL ONLY (Sep 1 - Nov 30)"
+    fi
+    ;;
+  *"Brightness Level"*)
+    LVL=$(omarchy-menu-select "Select Brightness Level" "low" "med" "high")
+    if [[ "$LVL" == "low" || "$LVL" == "med" || "$LVL" == "high" ]]; then
+        "$SYNC_CMD" set-brightness "$LVL"
+        notify-send -i keyboard "Keyboard Backlight" "Brightness set to $LVL"
+    fi
+    ;;
+  *"ALS Ambient Sensor Trigger:"*)
+    if [ "$ALS_ENABLED" = "true" ]; then
+        "$SYNC_CMD" set-als disable
+        notify-send -i keyboard "Keyboard Backlight" "ALS sensor trigger DISABLED"
+    else
+        "$SYNC_CMD" set-als enable
+        notify-send -i keyboard "Keyboard Backlight" "ALS sensor trigger ENABLED"
+    fi
+    ;;
+  *"Set ALS Lux Threshold"*)
+    VAL=$(omarchy-menu-input "Enter ALS lux threshold (e.g. 30):")
+    if [[ -n "$VAL" && "$VAL" =~ ^[0-9]+$ ]]; then
+        "$SYNC_CMD" set-als threshold "$VAL"
+        notify-send -i keyboard "Keyboard Backlight" "ALS threshold set to $VAL lux"
+    fi
+    ;;
   *"Set Daytime Turn-OFF Hour"*)
-    VAL=$(omarchy-menu-input "Enter Turn-OFF hour (0-23, e.g. 9 for 9:00 AM):")
+    VAL=$(omarchy-menu-input "Enter Turn-OFF hour (0-23, e.g. 6 for 6:00 AM):")
     if [[ -n "$VAL" && "$VAL" =~ ^[0-9]+$ && "$VAL" -ge 0 && "$VAL" -le 23 ]]; then
-        /home/jpi/.local/bin/asus-kbd-sync set-off "$VAL"
+        "$SYNC_CMD" set-off "$VAL"
         notify-send -i keyboard "Keyboard Backlight" "Scheduled Turn-OFF set to $(printf '%02d:00' "$VAL")"
     fi
     ;;
   *"Set Nighttime Turn-ON Hour"*)
-    VAL=$(omarchy-menu-input "Enter Turn-ON hour (0-23, e.g. 18 for 6:00 PM):")
+    VAL=$(omarchy-menu-input "Enter Turn-ON hour (0-23, e.g. 20 for 8:00 PM):")
     if [[ -n "$VAL" && "$VAL" =~ ^[0-9]+$ && "$VAL" -ge 0 && "$VAL" -le 23 ]]; then
-        /home/jpi/.local/bin/asus-kbd-sync set-on "$VAL"
+        "$SYNC_CMD" set-on "$VAL"
         notify-send -i keyboard "Keyboard Backlight" "Scheduled Turn-ON set to $(printf '%02d:00' "$VAL")"
     fi
     ;;
-  *"Set Night Brightness Level"*)
-    LVL=$(omarchy-menu-select "Select Brightness Level" "low" "med" "high")
-    if [[ "$LVL" == "low" || "$LVL" == "med" || "$LVL" == "high" ]]; then
-        /home/jpi/.local/bin/asus-kbd-sync set-brightness "$LVL"
-        notify-send -i keyboard "Keyboard Backlight" "Brightness set to $LVL"
-    fi
+  *"View Backlight & Sensor Status"*)
+    STATUS_OUT=$("$SYNC_CMD" status)
+    notify-send -i keyboard "Keyboard Status" "$STATUS_OUT"
     ;;
 esac

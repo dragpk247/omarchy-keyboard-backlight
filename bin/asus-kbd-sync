@@ -1,19 +1,45 @@
 #!/bin/bash
-# Sync ASUS ROG Flow 13 keyboard backlight with dynamic user-configured schedule.
+# Sync ASUS ROG Flow 13 keyboard backlight with dynamic user-configured schedule & ALS sensor.
 
 CONFIG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/settings/kbd-schedule.json"
 
+is_fall_season() {
+    local m
+    m=$(date +%-m)
+    # Meteorological Fall: September 1 through November 30
+    if [ "$m" -ge 9 ] && [ "$m" -le 11 ]; then return 0; fi
+    return 1
+}
+
+get_als_lux() {
+    # Check standard Linux IIO ambient light sensors
+    for dev in /sys/bus/iio/devices/iio:device*; do
+        if [ -f "$dev/in_illuminance_input" ]; then
+            cat "$dev/in_illuminance_input" 2>/dev/null && return 0
+        elif [ -f "$dev/in_illuminance_raw" ]; then
+            cat "$dev/in_illuminance_raw" 2>/dev/null && return 0
+        fi
+    done
+    return 1
+}
+
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
-        ENABLED=$(jq -r 'if has("enabled") then .enabled else false end' "$CONFIG_FILE" 2>/dev/null)
-        OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 9 end' "$CONFIG_FILE" 2>/dev/null)
-        ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 18 end' "$CONFIG_FILE" 2>/dev/null)
-        BRIGHTNESS=$(jq -r '.brightness // "med"' "$CONFIG_FILE" 2>/dev/null)
+        ENABLED=$(jq -r 'if has("enabled") then .enabled else true end' "$CONFIG_FILE" 2>/dev/null)
+        OFF_HOUR=$(jq -r 'if has("off_hour") then .off_hour else 6 end' "$CONFIG_FILE" 2>/dev/null)
+        ON_HOUR=$(jq -r 'if has("on_hour") then .on_hour else 20 end' "$CONFIG_FILE" 2>/dev/null)
+        BRIGHTNESS=$(jq -r '.brightness // "low"' "$CONFIG_FILE" 2>/dev/null)
+        SEASON=$(jq -r '.season // "fall"' "$CONFIG_FILE" 2>/dev/null)
+        ALS_ENABLED=$(jq -r 'if has("als_enabled") then .als_enabled else false end' "$CONFIG_FILE" 2>/dev/null)
+        ALS_THRESHOLD=$(jq -r '.als_threshold // 30' "$CONFIG_FILE" 2>/dev/null)
     else
-        ENABLED=false
-        OFF_HOUR=9
-        ON_HOUR=18
-        BRIGHTNESS="med"
+        ENABLED=true
+        OFF_HOUR=6
+        ON_HOUR=20
+        BRIGHTNESS="low"
+        SEASON="fall"
+        ALS_ENABLED=false
+        ALS_THRESHOLD=30
     fi
 }
 
@@ -24,13 +50,16 @@ save_config() {
       --argjson off_hour "$OFF_HOUR" \
       --argjson on_hour "$ON_HOUR" \
       --arg brightness "$BRIGHTNESS" \
-      '{enabled: $enabled, off_hour: $off_hour, on_hour: $on_hour, brightness: $brightness}' > "$CONFIG_FILE"
+      --arg season "$SEASON" \
+      --argjson als_enabled "$ALS_ENABLED" \
+      --argjson als_threshold "$ALS_THRESHOLD" \
+      '{enabled: $enabled, off_hour: $off_hour, on_hour: $on_hour, brightness: $brightness, season: $season, als_enabled: $als_enabled, als_threshold: $als_threshold}' > "$CONFIG_FILE"
 }
 
 set_brightness() {
     local target="$1"
     load_config
-    local level_num=2
+    local level_num=1
     case "$BRIGHTNESS" in
         low) level_num=1 ;;
         med) level_num=2 ;;
@@ -57,47 +86,105 @@ case "$ACTION" in
         set_brightness on
         ;;
     toggle)
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] toggle called" >> /tmp/asus-kbd.log
         cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
         if [ "$cur" -gt 0 ]; then
             set_brightness off
             echo "Keyboard backlight turned OFF"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] turned OFF" >> /tmp/asus-kbd.log
+            omarchy-osd -i keyboard -m "Keyboard: OFF" -p 0 2>/dev/null || true
+            notify-send -i keyboard "Keyboard Backlight" "Turned OFF" 2>/dev/null || true
         else
             set_brightness on
             echo "Keyboard backlight turned ON ($BRIGHTNESS)"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] turned ON ($BRIGHTNESS)" >> /tmp/asus-kbd.log
+            level_pct=33
+            case "$BRIGHTNESS" in
+                low) level_pct=33 ;;
+                med) level_pct=66 ;;
+                high) level_pct=100 ;;
+            esac
+            omarchy-osd -i keyboard -m "Keyboard: ${BRIGHTNESS^^}" -p "$level_pct" 2>/dev/null || true
+            notify-send -i keyboard "Keyboard Backlight" "Turned ON (${BRIGHTNESS^^})" 2>/dev/null || true
         fi
         ;;
     auto)
         if [ "$ENABLED" != "true" ]; then
-            # Schedule is disabled; do not enforce changes
             exit 0
         fi
-        HOUR=$(date +%-H)
-        target="on"
-        if [ "$OFF_HOUR" -lt "$ON_HOUR" ]; then
-            if [ "$HOUR" -ge "$OFF_HOUR" ] && [ "$HOUR" -lt "$ON_HOUR" ]; then
-                target="off"
-            fi
-        else
-            if [ "$HOUR" -ge "$OFF_HOUR" ] || [ "$HOUR" -lt "$ON_HOUR" ]; then
-                target="off"
+
+        # Season check
+        if [ "$SEASON" = "fall" ] && ! is_fall_season; then
+            # Outside Fall season; do not turn on via Fall schedule
+            set_brightness off
+            exit 0
+        fi
+
+        target="off"
+
+        # Check ALS sensor if enabled
+        if [ "$ALS_ENABLED" = "true" ]; then
+            if current_lux=$(get_als_lux); then
+                if [ "$current_lux" -lt "$ALS_THRESHOLD" ]; then
+                    target="on"
+                else
+                    target="off"
+                fi
+                set_brightness "$target"
+                exit 0
             fi
         fi
+
+        # Schedule check (ON from ON_HOUR e.g. 20:00 to OFF_HOUR e.g. 06:00)
+        HOUR=$(date +%-H)
+        if [ "$OFF_HOUR" -lt "$ON_HOUR" ]; then
+            # Normal overnight window (e.g. 20:00 -> 06:00)
+            if [ "$HOUR" -ge "$OFF_HOUR" ] && [ "$HOUR" -lt "$ON_HOUR" ]; then
+                target="off"
+            else
+                target="on"
+            fi
+        else
+            # Same-day window (e.g. 09:00 -> 18:00)
+            if [ "$HOUR" -ge "$OFF_HOUR" ] || [ "$HOUR" -lt "$ON_HOUR" ]; then
+                target="off"
+            else
+                target="on"
+            fi
+        fi
+
         set_brightness "$target"
         ;;
     status)
-        echo "Current time: $(date '+%H:%M:%S')"
-        echo "Schedule Enabled: $ENABLED"
-        if [ "$ENABLED" = "true" ]; then
-            echo "Scheduled Turn-OFF: $(printf '%02d:00' "$OFF_HOUR")"
-            echo "Scheduled Turn-ON:  $(printf '%02d:00' "$ON_HOUR") (Brightness: $BRIGHTNESS)"
+        echo "=== ASUS Keyboard Backlight Status ==="
+        echo "Current Time:   $(date '+%Y-%m-%d %H:%M:%S')"
+        if is_fall_season; then
+            echo "Current Season: Fall / Autumn (ACTIVE: Sep 1 - Nov 30)"
         else
-            echo "Automated schedule is DISABLED (Manual control only)"
+            echo "Current Season: Outside Fall"
         fi
+        echo "Schedule State: $([ "$ENABLED" = "true" ] && echo "ENABLED" || echo "DISABLED")"
+        echo "Season Filter:  $SEASON"
+        echo "Active Window:  $(printf '%02d:00' "$ON_HOUR") (8:00 PM) to $(printf '%02d:00' "$OFF_HOUR") (6:00 AM)"
+        echo "Backlight Level:$BRIGHTNESS"
+        
+        echo ""
+        echo "--- Ambient Light Sensor (ALS) ---"
+        echo "ALS Enabled:    $ALS_ENABLED"
+        echo "ALS Threshold:  $ALS_THRESHOLD lux"
+        if als_val=$(get_als_lux); then
+            echo "ALS Reading:    $als_val lux"
+        else
+            echo "ALS Reading:    No hardware IIO light sensor detected (kernel/firmware limited)"
+        fi
+
+        echo ""
+        echo "--- Hardware State ---"
         if command -v asusctl >/dev/null 2>&1; then
-            echo "asusctl status: $(asusctl leds get 2>/dev/null)"
+            echo "asusctl LED:    $(asusctl leds get 2>/dev/null)"
         fi
         if command -v brightnessctl >/dev/null 2>&1; then
-            echo "Hardware brightness: $(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null)/$(brightnessctl --device='asus::kbd_backlight' max 2>/dev/null)"
+            echo "brightnessctl:  $(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null)/$(brightnessctl --device='asus::kbd_backlight' max 2>/dev/null)"
         fi
         ;;
     enable)
@@ -133,13 +220,26 @@ case "$ACTION" in
             exit 1
         fi
         ;;
+    set-season)
+        case "$2" in
+            fall|all)
+                SEASON="$2"
+                save_config
+                echo "Season filter set to: $SEASON"
+                $0 auto
+                ;;
+            *)
+                echo "Usage: $0 set-season <fall|all>"
+                exit 1
+                ;;
+        esac
+        ;;
     set-brightness)
         case "$2" in
             low|med|high)
                 BRIGHTNESS="$2"
                 save_config
                 echo "Brightness preset set to: $BRIGHTNESS"
-                # If currently on, update brightness now
                 cur=$(brightnessctl --device='asus::kbd_backlight' get 2>/dev/null || echo 0)
                 if [ "$cur" -gt 0 ]; then
                     set_brightness on
@@ -151,8 +251,39 @@ case "$ACTION" in
                 ;;
         esac
         ;;
+    set-als)
+        case "$2" in
+            on|true|enable)
+                ALS_ENABLED=true
+                save_config
+                echo "ALS triggering ENABLED"
+                $0 auto
+                ;;
+            off|false|disable)
+                ALS_ENABLED=false
+                save_config
+                echo "ALS triggering DISABLED"
+                $0 auto
+                ;;
+            threshold)
+                if [[ -n "$3" && "$3" =~ ^[0-9]+$ ]]; then
+                    ALS_THRESHOLD="$3"
+                    save_config
+                    echo "ALS threshold set to: $ALS_THRESHOLD lux"
+                    $0 auto
+                else
+                    echo "Usage: $0 set-als threshold <lux_value>"
+                    exit 1
+                fi
+                ;;
+            *)
+                echo "Usage: $0 set-als <enable|disable|threshold <val>>"
+                exit 1
+                ;;
+        esac
+        ;;
     *)
-        echo "Usage: $0 [auto|on|off|toggle|status|enable|disable|set-off <hour>|set-on <hour>|set-brightness <low|med|high>]"
+        echo "Usage: $0 [auto|on|off|toggle|status|enable|disable|set-off <hour>|set-on <hour>|set-season <fall|all>|set-brightness <low|med|high>|set-als <enable|disable|threshold <val>>]"
         exit 1
         ;;
 esac

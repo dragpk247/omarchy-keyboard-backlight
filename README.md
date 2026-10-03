@@ -10,11 +10,14 @@ Optimized for **ASUS ROG** laptops (Flow 13, Zephyrus, Strix) using `asusctl` as
 
 - **Top Bar Widget**: Native Quickshell status bar icon (``) that dynamically illuminates when your keyboard backlight is active.
 - **Interactive Laptop-Friendly Menu**: Single left-click opens an interactive Quickshell menu:
-  - **Instant Toggle**: Quickly switch the backlight On or Off.
-  - **Customizable Turn-OFF Hour**: Set daytime turn-off time (e.g. `09:00`).
-  - **Customizable Turn-ON Hour**: Set evening turn-on time (e.g. `18:00`).
+  - **Instant Toggle**: Quickly switch the backlight On or Off with visual OSD feedback.
+  - **Customizable Turn-OFF & ON Hours**: Set daytime turn-off time (e.g. `06:00`) and evening turn-on time (e.g. `20:00`).
   - **Enable / Disable Automation**: Toggle automated scheduling on or off with a single click.
-  - **Brightness Presets**: Choose between `low`, `med`, or `high`.
+  - **Brightness Presets**: Choose between `low` (33%), `med` (66%), or `high` (100%).
+  - **Season-Aware Filter**: Limit automated lighting to Fall/Autumn (`Sep 1 – Nov 30`) or run all year round.
+  - **Ambient Light Sensor (ALS)**: Dynamically trigger backlight only when environment drops below configured lux threshold (hardware sensor via Linux IIO sysfs).
+  - **Diagnostic Status Viewer**: Instant report of ALS readings, active season, brightness levels, and sysfs states.
+- **Omarchy OSD Integration**: Pops up smooth on-screen display badges (`omarchy-osd`) and desktop notifications on toggle.
 - **Sleep & Resume Watcher**: Automatically listens to systemd-logind D-Bus wake events (`PrepareForSleep`), ensuring the backlight state doesn't desync when waking from sleep or opening the laptop lid.
 - **Dual Hardware Sync**: Simultaneously manages `asusctl` (ASUS Aura controller) and `brightnessctl` (kernel sysfs LED class) to eliminate state discrepancies.
 - **Omarchy Menu Integration**: Also accessible from the main launcher menu (<kbd>Super</kbd>) under **Trigger ➔ Toggle** and **Setup ➔ Keyboard Backlight Schedule**.
@@ -101,7 +104,16 @@ asus-kbd-sync set-on 18
 # 4. Set evening brightness preset (low, med, or high)
 asus-kbd-sync set-brightness med
 
-# 5. Check status
+# 5. Set season filter (fall only or all year)
+asus-kbd-sync set-season fall
+asus-kbd-sync set-season all
+
+# 6. Configure Ambient Light Sensor (ALS) triggering
+asus-kbd-sync set-als enable
+asus-kbd-sync set-als disable
+asus-kbd-sync set-als threshold 30
+
+# 7. Check full diagnostics status
 asus-kbd-sync status
 ```
 
@@ -172,7 +184,10 @@ Example:
   "enabled": false,
   "off_hour": 9,
   "on_hour": 18,
-  "brightness": "med"
+  "brightness": "med",
+  "season": "fall",
+  "als_enabled": false,
+  "als_threshold": 30
 }
 ```
 
